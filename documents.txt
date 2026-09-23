@@ -1,0 +1,20 @@
+RAG stands for Retrieval-Augmented Generation.
+
+RAG systems retrieve relevant information from a knowledge base and provide
+that information to a language model as context.
+
+The main stages of a RAG system are document loading, chunking, embedding,
+retrieval, and generation.
+
+Embeddings are numerical representations of text. Similar pieces of text
+have similar embeddings.
+
+A vector database can efficiently search for embeddings that are similar
+to a user's question.
+
+Chunking is the process of splitting large documents into smaller pieces.
+Good chunk sizes help retrieval find relevant information without adding
+too much unnecessary context.
+
+Employees receive 30 days of paid vacation per year.
+Vacation requests must be submitted at least two weeks in advance.
