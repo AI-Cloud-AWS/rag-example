@@ -1,0 +1,951 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{default}
+
+\usepackage[utf8]{inputenc}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{amsmath}
+
+\definecolor{codegray}{RGB}{245,245,245}
+\definecolor{codeblue}{RGB}{17,24,39}
+\definecolor{codegreen}{RGB}{30,120,60}
+
+\lstset{
+    backgroundcolor=\color{codegray},
+    basicstyle=\ttfamily\scriptsize,
+    keywordstyle=\color{codeblue},
+    commentstyle=\color{codegreen},
+    stringstyle=\color{red!70!black},
+    breaklines=true,
+    frame=single,
+    showstringspaces=false
+}
+
+\title{Retrieval-Augmented Generation (RAG)}
+%\subtitle{A Beginner Tutorial with Python}
+\author{Dr. Sisay Chala}
+%\date{\today}
+
+\begin{document}
+
+%------------------------------------------------
+\begin{frame}
+    \titlepage
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}{Learning Objectives}
+
+By the end of this presentation, you will understand:
+
+\begin{itemize}[<+->]
+    \item What Retrieval-Augmented Generation (RAG) is
+    \item Why RAG is useful
+    \item What document chunking means
+    \item What embeddings are
+    \item What FAISS does
+    \item How retrieval works
+    \item How retrieved information is given to an LLM
+    \item How to build a simple RAG pipeline in Python
+\end{itemize}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}{What is RAG?}
+
+\textbf{RAG = Retrieval-Augmented Generation}
+
+Instead of asking an LLM to answer only from its training knowledge:
+
+\begin{center}
+\Large
+Question $\rightarrow$ LLM $\rightarrow$ Answer
+\end{center}
+
+\vspace{0.5cm}
+
+RAG first retrieves relevant information from external documents:
+
+\begin{center}
+\Large
+Question
+$\rightarrow$
+Retrieve relevant information
+$\rightarrow$
+LLM
+$\rightarrow$
+Answer
+\end{center}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}{Why Use RAG?}
+
+Imagine we have a company handbook:
+
+\begin{block}{Company Policy}
+Employees receive 30 days of paid vacation per year.
+\end{block}
+
+A user asks:
+
+\begin{quote}
+How many vacation days do employees receive?
+\end{quote}
+
+A general-purpose LLM may not know this private company policy.
+
+\vspace{0.3cm}
+
+RAG retrieves the relevant passage and provides it to the LLM.
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}[shrink]{Basic RAG Architecture}
+
+\begin{center}
+
+\begin{tabular}{c}
+Documents \\
+$\downarrow$ \\
+Chunking \\
+$\downarrow$ \\
+Embeddings \\
+$\downarrow$ \\
+Vector Database / FAISS \\
+$\downarrow$ \\
+User Question \\
+$\downarrow$ \\
+Similarity Search \\
+$\downarrow$ \\
+Relevant Chunks \\
+$\downarrow$ \\
+LLM \\
+$\downarrow$ \\
+Answer
+\end{tabular}
+
+\end{center}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}[fragile]{Step 1: Load Documents}
+
+Create a simple document:
+
+\begin{lstlisting}[language={},caption={documents.txt}]
+RAG stands for Retrieval-Augmented Generation.
+
+RAG systems retrieve relevant information from a
+knowledge base and provide that information to a
+language model as context.
+
+The main stages of a RAG system are document loading,
+chunking, embedding, retrieval, and generation.
+\end{lstlisting}
+
+Load it with Python:
+
+\begin{lstlisting}[language=Python]
+with open("documents.txt", "r",
+          encoding="utf-8") as f:
+    text = f.read()
+\end{lstlisting}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}[fragile]{Step 2: Chunking}
+
+Large documents are divided into smaller pieces called
+\textbf{chunks}.
+
+\begin{lstlisting}[language=Python]
+def chunk_text(text, chunk_size=300):
+    words = text.split()
+
+    chunks = []
+
+    for i in range(0, len(words), chunk_size):
+        chunk = " ".join(
+            words[i:i + chunk_size]
+        )
+        chunks.append(chunk)
+
+    return chunks
+\end{lstlisting}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}[fragile]{What is chunk\_size?}
+
+In our simple implementation:
+
+\begin{lstlisting}[language=Python]
+def chunk_text(text, chunk_size=300):
+\end{lstlisting}
+
+\texttt{chunk\_size=300} means:
+
+\begin{center}
+\Large
+\textbf{up to 300 words per chunk}
+\end{center}
+
+For example, with a 750-word document:
+
+\begin{itemize}
+    \item Chunk 1: words 1--300
+    \item Chunk 2: words 301--600
+    \item Chunk 3: words 601--750
+\end{itemize}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}{Why Does Chunk Size Matter?}
+
+\textbf{Chunks that are too small}
+
+\begin{itemize}
+    \item May lose important context
+    \item Retrieved information may be incomplete
+\end{itemize}
+
+\vspace{0.3cm}
+
+\textbf{Chunks that are too large}
+
+\begin{itemize}
+    \item May contain irrelevant information
+    \item Retrieval becomes less precise
+    \item More context is sent to the LLM
+\end{itemize}
+
+\vspace{0.3cm}
+
+In real systems, chunks often use:
+
+\begin{itemize}
+    \item Paragraphs
+    \item Sections
+    \item Sentences
+    \item Token-based limits
+    \item Overlapping chunks
+\end{itemize}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}{Step 3: Embeddings}
+
+An \textbf{embedding} converts text into a numerical vector.
+
+For example:
+
+\begin{center}
+\texttt{"RAG retrieves documents"}
+\end{center}
+
+becomes something like:
+
+\[
+[0.12,\;-0.44,\;0.81,\;0.03,\;\ldots]
+\]
+
+The vector represents semantic information about the text.
+
+\vspace{0.3cm}
+
+Similar pieces of text tend to have similar vectors.
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}[fragile, shrink]{Creating Embeddings with Python}
+
+Install Sentence Transformers:
+
+\begin{lstlisting}[language=bash]
+pip install sentence-transformers
+\end{lstlisting}
+
+Load an embedding model:
+
+\begin{lstlisting}[language=Python]
+from sentence_transformers import SentenceTransformer
+
+model = SentenceTransformer(
+    "all-MiniLM-L6-v2"
+)
+\end{lstlisting}
+
+Create embeddings:
+
+\begin{lstlisting}[language=Python]
+embeddings = model.encode(chunks)
+
+print(embeddings.shape)
+\end{lstlisting}
+
+For example:
+\[
+(2,384)
+\]
+means 2 chunks with 384-dimensional vectors.
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}{Step 4: Indexing using FAISS}
+
+\textbf{FAISS = Facebook AI Similarity Search}
+
+FAISS is a library developed by Meta for
+\textbf{efficient similarity search over vectors}.
+
+In RAG, FAISS can store document embeddings and
+quickly find vectors similar to a user's question.
+
+\vspace{0.4cm}
+
+Think of FAISS as:
+
+\begin{center}
+\Large
+\textbf{a search engine for embeddings}
+\end{center}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}{FAISS in the RAG Pipeline}
+
+\begin{center}
+
+\begin{tabular}{c}
+Document chunks \\
+$\downarrow$ \\
+Embedding model \\
+$\downarrow$ \\
+Vectors \\
+$\downarrow$ \\
+\textbf{FAISS} \\
+$\downarrow$ \\
+Similar vectors / relevant chunks
+\end{tabular}
+
+\end{center}
+
+FAISS does \textbf{not} generate answers.
+
+It performs similarity search.
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}[fragile]{Creating a FAISS Index}
+
+Install FAISS:
+
+\begin{lstlisting}[language=bash]
+pip install faiss-cpu
+\end{lstlisting}
+
+Create an index:
+
+\begin{lstlisting}[language=Python]
+import faiss
+
+dimension = embeddings.shape[1]
+
+index = faiss.IndexFlatL2(dimension)
+\end{lstlisting}
+
+Add document embeddings:
+
+\begin{lstlisting}[language=Python]
+index.add(embeddings)
+\end{lstlisting}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}[fragile]{What Does IndexFlatL2 Mean?}
+
+Our example uses:
+
+\begin{lstlisting}[language=Python]
+faiss.IndexFlatL2(dimension)
+\end{lstlisting}
+
+\texttt{L2} refers to Euclidean distance.
+
+Conceptually:
+
+\[
+d(x,y) =
+\sqrt{\sum_i (x_i-y_i)^2}
+\]
+
+Smaller distance means the vectors are closer.
+
+\vspace{0.3cm}
+
+FAISS provides many other index types optimized for
+different datasets and performance requirements.
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}[fragile]{Step 5: Retrieval}
+
+Suppose the user asks:
+
+\begin{quote}
+What are the main stages of RAG?
+\end{quote}
+
+First, embed the question:
+
+\begin{lstlisting}[language=Python]
+question_embedding = model.encode(
+    [question]
+)
+\end{lstlisting}
+
+Then search FAISS:
+
+\begin{lstlisting}[language=Python]
+distances, indices = index.search(
+    question_embedding,
+    k=2
+)
+\end{lstlisting}
+
+\texttt{k=2} means:
+
+\begin{center}
+\textbf{retrieve the 2 most similar chunks}
+\end{center}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}[fragile]{Retrieving the Actual Text}
+
+FAISS returns the indices of the matching vectors.
+
+We use those indices to retrieve the original chunks:
+
+\begin{lstlisting}[language=Python]
+retrieved_chunks = [
+    chunks[i]
+    for i in indices[0]
+]
+\end{lstlisting}
+
+Now we have the information that is
+most relevant to the question.
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}[fragile]{Step 6: Give Context to the LLM}
+
+Combine the retrieved chunks:
+
+\begin{lstlisting}[language=Python]
+context = "\n\n".join(
+    retrieved_chunks
+)
+\end{lstlisting}
+
+Build a prompt:
+
+\begin{lstlisting}[language=Python]
+prompt = f"""
+Answer the question using only the context below.
+
+Context:
+{context}
+
+Question:
+{question}
+
+If the answer cannot be found in the context, say:
+"I don't know based on the provided documents."
+"""
+\end{lstlisting}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}[fragile]{Step 7: Generate the Answer}
+
+Use an LLM:
+
+\begin{lstlisting}[language=Python]
+from openai import OpenAI
+
+client = OpenAI()
+
+response = client.responses.create(
+    model="gpt-5.6",
+    input=prompt
+)
+
+print(response.output_text)
+\end{lstlisting}
+
+% The LLM receives:
+
+% \[
+% \text{Question}
+% +
+% \text{Retrieved Context}
+% \rightarrow
+% \text{Answer}
+% \]
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}{Complete RAG Pipeline}
+
+\begin{center}
+\Large
+
+\textbf{Documents}
+
+$\downarrow$
+
+\textbf{Chunking}
+
+$\downarrow$
+
+\textbf{Embedding Model}
+
+$\downarrow$
+
+\textbf{FAISS}
+
+$\downarrow$
+
+\textbf{Question}
+
+$\downarrow$
+
+\textbf{Question Embedding}
+
+$\downarrow$
+
+\textbf{Similarity Search}
+
+$\downarrow$
+
+\textbf{Relevant Chunks}
+
+$\downarrow$
+
+\textbf{LLM}
+
+$\downarrow$
+
+\textbf{Answer}
+
+\end{center}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}{The Three Main Components}
+
+A simple RAG system combines three important components.
+
+\begin{block}{1. Embedding Model}
+Converts text into vectors.
+\end{block}
+
+\begin{block}{2. Vector Search}
+Finds document vectors similar to the question.
+FAISS can perform this task.
+\end{block}
+
+\begin{block}{3. LLM}
+Uses the retrieved context to generate a natural-language answer.
+\end{block}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}{Traditional LLM vs RAG}
+
+\begin{columns}
+
+\column{0.48\textwidth}
+
+\textbf{Traditional LLM}
+
+\begin{center}
+Question
+
+$\downarrow$
+
+LLM
+
+$\downarrow$
+
+Answer
+\end{center}
+
+The model relies primarily on
+its existing knowledge.
+
+\pause 
+
+\column{0.48\textwidth}
+
+\textbf{RAG}
+
+\begin{center}
+Question
+
+$\downarrow$
+
+Retrieve documents
+
+$\downarrow$
+
+LLM
+
+$\downarrow$
+
+Answer
+\end{center}
+
+The model receives relevant
+external context.
+
+\end{columns}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}{Where Can RAG Be Used?}
+
+RAG is useful when an LLM needs access to
+external or private information.
+
+\begin{itemize}
+    \item Company knowledge bases
+    \item Internal documentation
+    \item Customer-support systems
+    \item Research assistants
+    \item Product manuals
+    \item Technical documentation
+    \item Question answering over PDFs
+    \item Internal wikis
+\end{itemize}
+
+\end{frame}
+
+% %------------------------------------------------
+% \begin{frame}[fragile]{Simple RAG: Complete Example}
+
+% \begin{lstlisting}[language=Python]
+% import faiss
+% from sentence_transformers import SentenceTransformer
+% from openai import OpenAI
+
+% # Load document
+% with open("documents.txt", "r",
+%           encoding="utf-8") as f:
+%     text = f.read()
+
+% # Chunk document
+% def chunk_text(text, chunk_size=100):
+%     words = text.split()
+%     return [
+%         " ".join(words[i:i + chunk_size])
+%         for i in range(0, len(words), chunk_size)
+%     ]
+
+% chunks = chunk_text(text)
+
+% # Create embeddings
+% model = SentenceTransformer(
+%     "all-MiniLM-L6-v2"
+% )
+
+% embeddings = model.encode(chunks)
+
+% # Create FAISS index
+% dimension = embeddings.shape[1]
+% index = faiss.IndexFlatL2(dimension)
+% index.add(embeddings)
+% \end{lstlisting}
+
+% \end{frame}
+
+% %------------------------------------------------
+% \begin{frame}[fragile]{Complete Example: Retrieval}
+
+% \begin{lstlisting}[language=Python]
+% question = "What are the main stages of RAG?"
+
+% # Embed question
+% question_embedding = model.encode(
+%     [question]
+% )
+
+% # Search
+% distances, indices = index.search(
+%     question_embedding,
+%     k=2
+% )
+
+% # Retrieve text
+% retrieved_chunks = [
+%     chunks[i]
+%     for i in indices[0]
+% ]
+
+% context = "\n\n".join(
+%     retrieved_chunks
+% )
+% \end{lstlisting}
+
+% \end{frame}
+
+% %------------------------------------------------
+% \begin{frame}[fragile]{Complete Example: Generation}
+
+% \begin{lstlisting}[language=Python]
+% prompt = f"""
+% Answer the question using only
+% the context below.
+
+% Context:
+% {context}
+
+% Question:
+% {question}
+
+% If the answer cannot be found in
+% the context, say:
+% "I don't know based on the
+% provided documents."
+% """
+
+% client = OpenAI()
+
+% response = client.responses.create(
+%     model="gpt-5.6",
+%     input=prompt
+% )
+
+% print(response.output_text)
+% \end{lstlisting}
+
+% \end{frame}
+
+%------------------------------------------------
+\begin{frame}{Limitations of our RAG Example}
+
+%Our implementation is intentionally simple.
+
+A production RAG system needs to consider:
+
+\begin{itemize}
+    \item Better document parsing
+    \item Better chunking strategies
+    \item \textbf{Chunk overlap}
+    \item \textbf{Metadata}
+    \item Better vector indexes
+    \item Hybrid search
+    \item Reranking
+    \item Retrieval evaluation
+    \item Answer evaluation
+    \item Source citations
+\end{itemize}
+
+\end{frame}
+
+%------------------------------------------------
+\begin{frame}{Chunk Overlap}
+
+Instead of completely independent chunks:
+
+\begin{center}
+Chunk 1: 1--300
+
+Chunk 2: 301--600
+\end{center}
+
+we can use overlap:
+
+\begin{center}
+Chunk 1: 1--300
+
+Chunk 2: 250--550
+
+Chunk 3: 500--800
+\end{center}
+
+Overlap helps preserve information that occurs
+near chunk boundaries.
+
+\end{frame}
+
+% %------------------------------------------------
+% \begin{frame}{Advanced Retrieval}
+
+% A production system may use:
+
+% \begin{itemize}
+%     \item Semantic vector search
+%     \item Keyword search
+%     \item Metadata filtering
+%     \item Hybrid search
+%     \item Reranking
+% \end{itemize}
+
+% A common pipeline is:
+
+% \begin{center}
+% Question
+% $\rightarrow$
+% Retrieve 20 candidates
+% $\rightarrow$
+% Reranker
+% $\rightarrow$
+% Top 5 chunks
+% $\rightarrow$
+% LLM
+% \end{center}
+
+% \end{frame}
+
+%------------------------------------------------
+\begin{frame}[fragile]{Metadata}
+
+Instead of storing only the text:
+
+\begin{lstlisting}[language=Python]
+chunk
+\end{lstlisting}
+
+we can store additional information:
+
+\begin{lstlisting}[language=Python]
+{
+    "text": "...",
+    "document": "handbook.pdf",
+    "page": 42,
+    "section": "Vacation Policy"
+}
+\end{lstlisting}
+
+This makes it possible to provide source information
+with the generated answer.
+
+\end{frame}
+
+\begin{fragile}{Example Implementation}
+
+You can find the example implementation on GitHub: 
+
+\url{https://github.com/AI-Cloud-AWS/rag-example}
+
+In order to execute this example, you need:
+    \begin{itemize}
+        \item 
+        \item OpenAI key 
+    \end{itemize}
+% %------------------------------------------------
+% \begin{frame}{Key Concepts to Learn Next}
+
+% A useful learning sequence is:
+
+% \begin{enumerate}
+%     \item Embeddings
+%     \item Vector similarity
+%     \item Chunking strategies
+%     \item Vector databases
+%     \item Metadata filtering
+%     \item Hybrid search
+%     \item Reranking
+%     \item Context windows
+%     \item RAG evaluation
+%     \item Advanced RAG
+% \end{enumerate}
+
+% \end{frame}
+
+%------------------------------------------------
+\begin{frame}{Recap}
+
+\begin{center}
+
+\Huge
+RAG is not a special type of LLM.
+
+\vspace{0.5cm}
+
+\Large
+It is a pipeline combining
+
+\vspace{0.3cm}
+
+\textbf{Information Retrieval}
+
+\vspace{0.2cm}
+
++
+
+\vspace{0.2cm}
+
+\textbf{Language Generation}
+
+\end{center}
+
+\end{frame}
+
+% %------------------------------------------------
+% \begin{frame}{Summary}
+
+% \begin{itemize}
+%     \item Documents are divided into chunks.
+%     \item Chunks are converted into embeddings.
+%     \item FAISS stores and searches the embeddings.
+%     \item A user's question is also converted into an embedding.
+%     \item Similar document chunks are retrieved.
+%     \item Retrieved chunks are added to the LLM prompt.
+%     \item The LLM generates an answer using the retrieved context.
+% \end{itemize}
+
+% \vspace{0.5cm}
+
+% \begin{center}
+% \Large
+% \textbf{Question $\rightarrow$ Retrieve $\rightarrow$ Generate}
+% \end{center}
+
+% \end{frame}
+
+%------------------------------------------------
+\begin{frame}
+    \centering
+    \Huge
+    Questions?
+\end{frame}
+
+\end{document}

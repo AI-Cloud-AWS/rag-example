@@ -80,6 +80,14 @@ say "I don't know based on the provided documents."
 """
 
 # 8. Generate answer
+# # get the variable defined in .env
+# api_key = os.getenv("OPENAI_API_KEY") 
+# # provide the key to the OpnAI() function
+# client = OpenAI(
+# 	api_key=api_key
+# )
+
+# You can skip the above lines as OpenAI can pick the key automatically as soon as you call load_dotenv()
 client = OpenAI()
 
 response = client.responses.create(
